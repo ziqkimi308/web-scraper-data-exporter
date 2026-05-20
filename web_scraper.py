@@ -48,6 +48,15 @@ def fetch_page(url, headers=None, max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT
 	return None
 
 def scrape_book_details(book_url, headers=None):
+	"""
+	find() with class_
+	with attrs={}
+	.text()
+	.get()
+	find_all()
+
+	"""
+
 	soup = fetch_page(book_url, headers)
 	if not soup:
 		return None
@@ -101,4 +110,96 @@ def scrape_book_details(book_url, headers=None):
 	return data
 	
 
-print(scrape_book_details(DEFAULT_BASE_URL))
+# Scrap book catalog (home) with pages
+def scrape_catalog(base_url, max_pages=None, fetch_details=False, headers=None, delay=DEFAULT_DELAY):
+	"""
+	
+	"""
+
+	books = []
+	page_num = 1
+	# urljoin from urllib.parse
+	catalog_url = urljoin(base_url, "catalogue/page-{}.html")
+
+	while True:
+		if max_pages and page_num > max_pages:
+			break
+		
+		# Dynamically updating url
+		url = catalog_url.format(page_num)
+		print(f"Scraping page {page_num}: {url}")
+
+		# Fetch page
+		soup = fetch_page(url, headers)
+		if not soup:
+			break
+		
+		# Find all book articles
+		articles = soup.find_all('article', class_='product_pod')
+		if not articles:
+			break
+
+		for article in articles:
+			book = {} # not books
+
+			# title and detail
+			title_tag = article.h3.a
+			if title_tag:
+				book['title'] = title_tag.get('title', 'N/A') # title, href, and others included in meta data
+				# urljoin() join 2 urls but does not has a fixed pattern. It depends on the case.
+				detail_url = urljoin(url, title_tag.get('href', ''))
+				book['detail_url'] = detail_url
+			else:
+				continue
+
+			# price
+			price_tag = article.find('p', class_='price_color')
+			book['price'] = price_tag.text.strip() if price_tag else 'N/A'
+
+			# rating
+			rating_tag = article.find('p', class_='star-rating')
+			if rating_tag:
+				rating_class = rating_tag.get('class', [])
+				# rating_class is a list of CSS classes, e.g. ['star-rating', 'Three']
+    			# - If length == 0 → no class attribute at all
+    			# - If length == 1 → only 'star-rating' present, rating info missing
+    			# - If length >= 2 → second item holds rating word ('One', 'Two', etc.)
+				rating = rating_class[1] if len(rating_class > 1) else 'N/A'
+				book['rating'] = rating
+			else:
+				book['rating'] = 'N/A'
+
+			# availability
+			avail_tag = article.find('p', class_='instock availability')
+			book['availability'] = avail_tag.text.strip() if avail_tag else 'N/A'
+
+			if fetch_details:
+				print(f"Fetching details for: {book['title']}")
+				details = scrape_book_details(detail_url, headers)
+				if details:
+					book.update(details) # update merge into existing data without replace them
+				time.sleep(delay)
+			
+			# Update the outside books
+			books.append(book)
+
+		# Check Next page
+		next_button = soup.find('li', class_='next')
+		if not next_button:
+			break
+
+		page_num += 1
+		time.sleep(delay)
+	
+	return books
+
+# Export to json and csv
+def export_to_csv(data, filename):
+	"""
+	"""
+
+	if not data:
+		print("No data to export.")
+		return False
+	
+	fieldnames = data[0].keys()
