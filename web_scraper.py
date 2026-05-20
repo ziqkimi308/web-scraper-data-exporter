@@ -113,7 +113,10 @@ def scrape_book_details(book_url, headers=None):
 # Scrap book catalog (home) with pages
 def scrape_catalog(base_url, max_pages=None, fetch_details=False, headers=None, delay=DEFAULT_DELAY):
 	"""
-	
+	urljoin from urllib.parse
+	urljoin join 2 urls - join pattern depends on cases
+	dict.update() - merge instead of append or replace
+
 	"""
 
 	books = []
@@ -196,10 +199,47 @@ def scrape_catalog(base_url, max_pages=None, fetch_details=False, headers=None, 
 # Export to json and csv
 def export_to_csv(data, filename):
 	"""
+	csv.DictWriter(file, fieldnames)
+	.writeheader()
+	.writerows()
+	IOError
+	file=sys.stderr
 	"""
 
 	if not data:
 		print("No data to export.")
 		return False
 	
+	# data is a list of dictionaries
 	fieldnames = data[0].keys()
+
+	try:
+		with open(filename, 'w', newline='', encoding='utf-8') as file:
+			writer = csv.DictWriter(file, fieldnames=fieldnames)
+			writer.writeheader()
+			writer.writerows(data)
+		print(f"Data exported to {filename} ({len(data)} records)")
+		return True
+	
+	except IOError as e:
+		print(f"Error writing CSV: {e}", file=sys.stderr)
+		return False
+	
+def export_to_json(data, filename, indent=2):
+	"""
+	json.dump() - file to json
+	ensure_ascii - retain non-ASCII characters
+	"""
+
+	if not data:
+		print("No data to export.")
+		return False
+	
+	try:
+		with open(filename, 'w', encoding='utf-8') as file:
+			json.dump(data, file, indent=indent, ensure_ascii=False)
+		print(f"Data exported to {filename} ({len(data)} records)")
+		return True
+	except IOError as e:
+		print(f"Error writing JSON: {e}", file=sys.stderr)
+		return False
