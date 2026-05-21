@@ -14,7 +14,7 @@ DEFAULT_BASE_URL = "https://books.toscrape.com/"
 USER_AGENTS = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123 Safari/537.36",
 					  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/123 Safari/537.36",
 					  "Mozilla/5.0 (X11; Linux x86_64) Firefox/115.0"]
-DEFAULT_USER_AGENT = {"User-Agent": random.choice(USER_AGENTS)}
+DEFAULT_USER_AGENT = random.choice(USER_AGENTS)
 DEFAULT_DELAY = 1.0
 DEFAULT_MAX_RETRIES = 3
 
@@ -30,7 +30,7 @@ def fetch_page(url, headers=None, max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT
 	"""
 
 	if headers is None:
-		headers = DEFAULT_USER_AGENT
+		headers = {'User-Agent': DEFAULT_USER_AGENT}
 	
 	# range() inclusive start exclusive end
 	for attempt in range(max_retries):
@@ -92,7 +92,7 @@ def scrape_book_details(book_url, headers=None):
 		data['category'] = 'N/A'
 
 	# upc from table
-	table = soup.find('table', class_='table table-stripped')
+	table = soup.find('table', class_='table table-striped')
 	if table:
 		for row in table.find_all('tr'):
 			header = row.find('th')
@@ -167,7 +167,7 @@ def scrape_catalog(base_url, max_pages=None, fetch_details=False, headers=None, 
     			# - If length == 0 → no class attribute at all
     			# - If length == 1 → only 'star-rating' present, rating info missing
     			# - If length >= 2 → second item holds rating word ('One', 'Two', etc.)
-				rating = rating_class[1] if len(rating_class > 1) else 'N/A'
+				rating = rating_class[1] if len(rating_class) > 1 else 'N/A'
 				book['rating'] = rating
 			else:
 				book['rating'] = 'N/A'
@@ -243,3 +243,78 @@ def export_to_json(data, filename, indent=2):
 	except IOError as e:
 		print(f"Error writing JSON: {e}", file=sys.stderr)
 		return False
+
+# CLI Integration
+def main():
+	# define main parser
+	parser = argparse.ArgumentParser(
+		description="Web Scraper & Data Exporter",
+		formatter_class=argparse.RawDescriptionHelpFormatter,
+		epilog="""Examples:
+# Scrape book listings only (basic info) and save to CSV
+python web_scraper.py --max-pages 2 --output books.csv
+# Scrape with full details and export to JSON
+python web_scraper.py --details --output books.json --format json
+# Custom URL and delay
+python web_scraper.py --url http://books.toscrape.com --delay 2
+""")
+	
+	# define arguments
+	parser.add_argument('--url', default=DEFAULT_BASE_URL, help=f"Base URL to scrape (default: {DEFAULT_BASE_URL})")
+
+	parser.add_argument('--max-pages', type=int, default=None, help=f"Maximum number of catalog pages to scrape")
+
+	# since boolean only has 2 values, it does not need default 
+	parser.add_argument('--details', action='store_true', help=f"Fetch detailed information from each book page")
+
+	parser.add_argument('--output', default='books_export', help="Output filename without extension (default: books_export)")
+
+	parser.add_argument('--format', choices=['csv', 'json', 'both'], default='csv', help='Export format (default: csv)')
+
+	parser.add_argument('--delay', type=float, default=DEFAULT_DELAY, help=f'Delay between requests in seconds (default: {DEFAULT_DELAY})')
+
+	parser.add_argument('--user-agent', default=DEFAULT_USER_AGENT, help='Custom User-Agent string')
+
+	# Parse/Extract arguments
+	args = parser.parse_args()
+
+	headers = {'User-Agent': str(args.user_agent)}
+	print(f"Starting scraper for {args.url}")
+
+	# Record start time
+	start_time = time.time()
+
+	data = scrape_catalog(
+        base_url=args.url,
+        max_pages=args.max_pages,
+        fetch_details=args.details,
+        headers=headers,
+        delay=args.delay
+    )
+
+	# Record end time
+	elapsed_time = time.time() - start_time
+	print(f"Scraping completed in {elapsed_time:.2f} seconds. Total items: {len(data)}")
+
+	if not data:
+		print("No data scraped. Exiting.")
+		sys.exit(1)
+
+	# The success statement is used to accumulate success across multiple steps. 
+	# Even if once success becomes False, it continues to be False even though all other steps return True
+	# This is to ensure all 3 success (data, export csv, export json)
+
+	success = True
+
+	if args.format in ('csv', 'both'):
+		csv_file = f"{args.output}.csv"
+		success = export_to_csv(data, csv_file) and success
+	
+	if args.format in ('json', 'both'):
+		json_file = f"{args.output}.json"
+		success = export_to_json(data, json_file) and success
+
+	sys.exit(0 if success else 1)
+
+if __name__ == '__main__':
+	main()
